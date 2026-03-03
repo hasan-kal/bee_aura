@@ -43,6 +43,32 @@ VALID_ERP_SYSTEMS = ["SAP", "Oracle Fusion", "Microsoft Dynamics", "Unknown"]
 VALID_ISSUE_TYPES = ["Incident", "Service Request", "Change Request", "Information Request"]
 VALID_PRIORITIES = ["High", "Medium", "Low"]
 
+# Mock Demo Data for testing without API key
+MOCK_DEMO_MODE = True  # Set to False to use real API
+DEMO_RESPONSES = {
+    "high": {
+        "business_category": "Inventory",
+        "erp_system": "SAP",
+        "issue_type": "Incident",
+        "priority": "High",
+        "first_level_response": "Thank you for reporting this critical issue. We understand the financial impact of the inventory system being down and the orders piling up. Our engineering team is investigating this immediately and will provide an update within 1 hour."
+    },
+    "medium": {
+        "business_category": "Procurement",
+        "erp_system": "Oracle Fusion",
+        "issue_type": "Service Request",
+        "priority": "Medium",
+        "first_level_response": "We acknowledge the performance issue you're experiencing. While we work on optimizing the system, please continue using the CSV workaround. Our team will investigate the root cause and provide a permanent solution within 24 hours."
+    },
+    "low": {
+        "business_category": "IT",
+        "erp_system": "Microsoft Dynamics",
+        "issue_type": "Information Request",
+        "priority": "Low",
+        "first_level_response": "Welcome to our team! You can reset your password by visiting the self-service portal or contacting our IT helpdesk. We've sent you a guide to the knowledge base which has detailed instructions."
+    }
+}
+
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -116,6 +142,24 @@ def validate_triaging_result(result: Dict) -> Tuple[bool, str]:
     return True, ""
 
 
+def get_demo_response(ticket_text: str) -> Dict:
+    """
+    Generate a demo response based on ticket keywords (for video recording).
+    
+    Returns:
+        Mock triaging result based on ticket content
+    """
+    ticket_lower = ticket_text.lower()
+    
+    # Determine priority based on keywords
+    if any(word in ticket_lower for word in ["crash", "down", "blocked", "financial", "revenue", "critical", "$50k", "$100k"]):
+        return DEMO_RESPONSES["high"].copy()
+    elif any(word in ticket_lower for word in ["slow", "performance", "takes", "time", "workaround", "issue"]):
+        return DEMO_RESPONSES["medium"].copy()
+    else:
+        return DEMO_RESPONSES["low"].copy()
+
+
 def call_llm_for_triaging(ticket_text: str, api_key: str) -> Tuple[bool, Optional[Dict], str]:
     """
     Call LLM API to triage the ticket.
@@ -123,6 +167,12 @@ def call_llm_for_triaging(ticket_text: str, api_key: str) -> Tuple[bool, Optiona
     Returns:
         Tuple of (success, triaging_result, message)
     """
+    # Demo mode: return mock response without calling API
+    if MOCK_DEMO_MODE:
+        import time
+        time.sleep(1)  # Simulate API latency for realistic demo
+        demo_result = get_demo_response(ticket_text)
+        return True, demo_result, "Successfully triaged ticket (Demo Mode)"
     # Construct the system prompt that enforces JSON output
     system_prompt = """You are an expert ERP support specialist tasked with triaging support tickets.
     
@@ -231,6 +281,23 @@ def render_api_key_section():
     """Render API key input section."""
     with st.sidebar:
         st.subheader("⚙️ Configuration")
+        st.markdown("---")
+        
+        # Demo mode toggle
+        demo_mode = st.checkbox(
+            "🎬 Demo Mode (No API Key Needed)",
+            value=MOCK_DEMO_MODE,
+            help="Use mock data for video recording/testing"
+        )
+        
+        # Update global demo mode setting
+        globals()['MOCK_DEMO_MODE'] = demo_mode
+        
+        if demo_mode:
+            st.success("✓ Demo Mode Active - Using Mock Data")
+            st.info("📹 Perfect for video recording and testing without an API key!")
+            return "demo_mode"
+        
         st.markdown("---")
         
         api_key = get_api_key()
@@ -390,8 +457,8 @@ def main():
     # Handle triaging
     if process_button:
         # Validate inputs
-        if not api_key:
-            st.error("❌ API key is required. Please configure it in the sidebar.")
+        if not api_key and api_key != "demo_mode":
+            st.error("❌ API key is required or enable Demo Mode. Please configure it in the sidebar.")
             return
         
         if not ticket_text or len(ticket_text) < 10:
